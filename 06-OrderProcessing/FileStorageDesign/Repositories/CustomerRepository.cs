@@ -37,5 +37,30 @@ namespace FileStorageDesign.Repositories
             }
             return customer;
         }
+        public Customer? GetCustomerById(int customerId)
+        {
+            Log.Info(nameof(CustomerRepository), "Opening connection...");
+            Thread.Sleep(200);
+
+            Log.Info(nameof(CustomerRepository), "Executing query...");
+            Thread.Sleep(Random.Shared.Next(300, 601));
+
+            var customers = _jsonFileStore.Read<Customer>(DataFiles.Customers);
+
+            var customer = customers.FirstOrDefault(c => c.Id == customerId);
+
+            if (customer != null)
+            {
+                Log.Success(nameof(CustomerRepository),
+                    $"Customer found: {customer.Name} (ID: {customer.Id})");
+            }
+            else
+            {
+                Log.Info(nameof(CustomerRepository),
+                    $"Customer with ID: {customerId} not found.");
+            }
+
+            return customer;
+        }
     }
 }

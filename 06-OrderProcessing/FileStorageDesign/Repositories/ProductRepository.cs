@@ -150,5 +150,102 @@ namespace FileStorageDesign.Repositories
             return true;
         }
 
+        public List<Product> GetAllProducts()
+        {
+            Log.Info(nameof(ProductRepository), "Opening connection...");
+            Thread.Sleep(200);
+
+            Log.Info(nameof(ProductRepository), "Executing query...");
+            Thread.Sleep(Random.Shared.Next(300, 601));
+
+            var products = _jsonFileStore.Read<Product>(DataFiles.Products);
+
+            if (products.Any())
+                Log.Success(nameof(ProductRepository), $"Retrieved {products.Count} products.");
+            else
+                Log.Info(nameof(ProductRepository), "No products found.");
+
+            return products;
+        }
+
+        public bool ReserveStock(int productId, int quantity)
+        {
+            if (quantity <= 0)
+                return false;
+
+            bool reserved = UpdateStock(products =>
+            {
+                var product = products.FirstOrDefault(p => p.Id == productId);
+
+                if (product == null || product.StockQuantity < quantity)
+                    return false;
+
+                product.StockQuantity -= quantity;
+                return true;
+            });
+
+            if (reserved)
+                Log.Success(nameof(ProductRepository),
+                    $"Reserved {quantity} units of product {productId}.");
+            else
+                Log.Info(nameof(ProductRepository),
+                    $"Could not reserve {quantity} units of product {productId}.");
+
+            return reserved;
+        }
+
+        public bool ReleaseStock(int productId, int quantity)
+        {
+            if (quantity <= 0)
+                return false;
+
+            bool released = UpdateStock(products =>
+            {
+                var product = products.FirstOrDefault(p => p.Id == productId);
+
+                if (product == null)
+                    return false;
+
+                product.StockQuantity += quantity;
+                return true;
+            });
+
+            if (released)
+                Log.Success(nameof(ProductRepository),
+                    $"Released {quantity} units of product {productId}.");
+            else
+                Log.Info(nameof(ProductRepository),
+                    $"Could not release {quantity} units of product {productId}.");
+
+            return released;
+        }
+
+        private bool UpdateStock(Func<List<Product>, bool> stockAction)
+        {
+            Log.Info(nameof(ProductRepository), "Opening connection...");
+            Thread.Sleep(200);
+
+            Log.Info(nameof(ProductRepository), "Beginning transaction...");
+            Thread.Sleep(100);
+
+            Log.Info(nameof(ProductRepository), "Updating stock...");
+            Thread.Sleep(400);
+
+            bool updated = false;
+
+            _jsonFileStore.Update<Product>(
+                DataFiles.Products,
+                products =>
+                {
+                    updated = stockAction(products);
+                });
+
+            Log.Info(nameof(ProductRepository), "Committing transaction...");
+            Thread.Sleep(200);
+
+            return updated;
+        }
+
+
     }
 }

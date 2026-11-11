@@ -96,3 +96,159 @@ Two orders could read the same stock quantity before either one updated the file
 I prevented this by using `SemaphoreSlim` through `JsonFileStore.UpdateAsync()`. It protects the complete read-modify-write operation for the same file.
 
 This ensures that only one reservation updates the stock at a time, preventing overselling.
+
+
+
+
+# Phase 3 — Full Checkout Workflow
+
+## Task 9.6 — Sync vs Async Comparison
+
+### 1. Does async make one order's workflow faster?
+
+No. Async does not necessarily make a single order finish faster.
+
+Both versions still perform the same operations and simulated delays. The main benefit of async is that it allows the application to handle multiple operations without blocking threads while waiting for I/O operations.
+
+### 2. Why does async scale better for many orders?
+
+Async uses threads more efficiently.
+
+When an async operation is waiting for I/O, such as reading a file or calling an external API, its thread is not blocked. The thread can be used for other work.
+
+In the sync version, each order runs on a dedicated thread, and that thread stays blocked during `Thread.Sleep` and other synchronous operations.
+
+This makes async more efficient when processing many orders concurrently.
+
+### 3. What happens to the sync version with 1,000 orders?
+
+The sync version would need to create and manage 1,000 dedicated threads if every order follows the same approach.
+
+This causes high memory usage and thread-management overhead. It can also lead to thread exhaustion and poor scalability.
+
+The async version can handle many concurrent orders without requiring one dedicated thread for every order.
+
+### 4. Why is async essential for apps that call databases, files, and APIs?
+
+These operations usually involve waiting for external resources.
+
+Using async methods allows the application to wait without blocking a thread. This improves resource usage, scalability, and responsiveness, especially when many requests are running at the same time.
+
+---
+
+## Task 9.7 — Fire-and-Forget Investigation
+
+### 1. What is the problem in the original code?
+
+The problem is that `SendConfirmationAsync` is called without `await`.
+
+This means the email operation starts, but `ProcessOrderAsync` does not wait for it to finish.
+
+As a result, the method can return before the email is sent, and exceptions from the email operation are not propagated to the caller.
+
+### 2. What happens if the email is still being sent when the method returns or the console app exits?
+
+The method continues executing after starting the email operation.
+
+The following output demonstrates that `ProcessOrderAsync` returns before the email operation finishes:
+
+**Console Output Before the Fix:**
+
+```text
+Starting order processing...
+OrderRepository -> Order saved: 1
+EmailService -> Sending email for Order #1, Attempt #2
+EmailService -> Rendering email template...
+Order processing finished
+Runner continues after ProcessOrderAsync returns.
+```
+
+The email operation had not finished when the method returned.
+
+If the console application exits before the email operation completes, the process may terminate before the email is sent successfully.
+
+### 3. What happens if the email operation throws an exception?
+
+Because the returned Task is not awaited, the exception is stored in the faulted Task instead of being propagated to the caller through `ProcessOrderAsync`.
+
+Therefore, a `try-catch` around the call to `ProcessOrderAsync` cannot catch that email exception.
+
+The failure may remain unobserved, and the caller may continue as if the operation had completed successfully.
+
+### 4. Fixed Implementation
+
+The fix is to use `await` when calling `SendConfirmationAsync`.
+
+```csharp
+public async Task ProcessOrderAsync(Order order, Customer customer)
+{
+    await _orderRepository.SaveOrderAsync(order);
+
+    await _emailService.SendConfirmationAsync(
+        order,
+        customer,
+        CancellationToken.None);
+
+    Console.WriteLine("Order processing finished");
+}
+```
+
+Now, `ProcessOrderAsync` waits until the email operation completes. If sending the email fails, the exception propagates to the caller.
+
+**Console Output After the Fix:**
+
+The following is a representative successful execution:
+
+```text
+Starting order processing...
+OrderRepository -> Order saved: 1
+EmailService -> Sending email for Order #1, Attempt #1
+EmailService -> Rendering email template...
+EmailService -> Connecting to SMTP server...
+EmailService -> Sending confirmation email...
+EmailService -> Confirmation email sent for Order #1
+Order processing finished
+Runner continues after ProcessOrderAsync returns.
+```
+
+Unlike the original version, the method prints `Order processing finished` only after the email operation completes successfully.
+
+### 5. When is await necessary?
+
+`await` is necessary when:
+
+- The next operation depends on the result of the current operation.
+- The caller must wait for the operation to finish.
+- Exceptions must be propagated and handled by the caller.
+- The application must ensure that the operation finishes before exiting or disposing required resources.
+
+### 6. When is fire-and-forget acceptable?
+
+Fire-and-forget can be acceptable when the operation is intentionally independent of the caller and its completion is not required before returning.
+
+However, failures must still be handled, and the operation's lifetime must be managed.
+
+For important background work, such as sending order confirmation emails, a background queue or durable message system is safer than starting an untracked Task.
+
+### 7. Why is async void dangerous?
+
+`async void` does not return a Task.
+
+This means the caller cannot:
+
+- Await the operation.
+- Know when it finishes.
+- Receive its result.
+- Catch its exceptions through a normal `try-catch` around the method call.
+
+This makes error handling and tracking the operation much harder.
+
+### 8. Why is async void acceptable for event handlers?
+
+Some event handlers require a `void` return type because of the event delegate signature.
+
+For example, a UI button click handler may need to be `async void`.
+
+In this case, `async void` is acceptable because the event framework expects a void-returning handler.
+
+However, exceptions should be handled inside the event handler using `try-catch`.

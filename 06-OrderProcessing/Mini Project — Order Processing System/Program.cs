@@ -1,92 +1,115 @@
-﻿using FileStorageDesign.Repositories;
-using FileStorageDesign.Runners;
+﻿
+using FileStorageDesign.Repositories;
 using FileStorageDesign.Services;
 using FileStorageDesign.Storage;
-using Mini_Project___Order_Processing_System.Runners;
+using FileStorageDesign.Runners;
 using OrderProcessingSystem.Storage;
 
-var jsonFileStore = new JsonFileStore();
+var cts = new CancellationTokenSource();
 
-//// Storage
-var dataSeeder = new DataSeeder(jsonFileStore);
+// false = Disable all controlled failures
+// true  = Enable all controlled failures
+bool enableFailures = false;
 
-// Async Repositories
-var customerRepository = new CustomerRepository(jsonFileStore);
+try
+{
+    var jsonFileStore = new JsonFileStore();
+    var dataSeeder = new DataSeeder(jsonFileStore);
 
-var productRepository = new ProductRepository(jsonFileStore);
+    // Repositories
+    var customerRepository = new CustomerRepository(jsonFileStore);
+    var productRepository = new ProductRepository(jsonFileStore);
+    var couponRepository = new CouponRepository(jsonFileStore);
+    var incomingOrderRepository = new IncomingOrderRepository(jsonFileStore);
 
-var couponRepository = new CouponRepository(jsonFileStore);
+    var orderRepository = new OrderRepository(
+        jsonFileStore,
+        enableFailures ? new[] { 13 } : Array.Empty<int>());
 
-var orderRepository = new OrderRepository(jsonFileStore);
+    // Async Services
+    var customerService = new CustomerService(customerRepository);
+    var inventoryService = new InventoryService(productRepository);
 
-var incomingOrderRepository = new IncomingOrderRepository(jsonFileStore);
+    var pricingService = new PricingService(
+        productRepository,
+        couponRepository  ,  customerRepository);
 
-var raceConditionDemo = new RaceConditionDemo(productRepository, jsonFileStore);
+    IPaymentGateway paymentGateway = new PaymentGateway(
+        jsonFileStore,
+        enableFailures ? new[] { 8 } : Array.Empty<int>(),
+        enableFailures ? new[] { 5 } : Array.Empty<int>());
 
-var invoiceGenerator = new InvoiceGenerator();
+    IEmailService emailService = new EmailService(
+        jsonFileStore,
+        enableFailures
+            ? new Dictionary<int, int>
+            {
+                [3] = 2,
+                [17] = int.MaxValue
+            }
+            : new Dictionary<int, int>());
 
-var orderValidatorService = new OrderValidatorService(
-    couponRepository,
-    customerRepository,
-    productRepository,
-    orderRepository);
+    var orderProcessor = new OrderProcessor(
+        customerService,
+        inventoryService,
+        pricingService,
+        paymentGateway,
+        orderRepository,
+        emailService,
+        jsonFileStore);
 
-var orderProcessor = new OrderProcessorV2(
-    productRepository,
-    orderRepository,
-    new OrderPricerService(new PricingService(productRepository, couponRepository, customerRepository, new[] { 7 })),
-    new InvoiceGenerator());
+    // Sync Services
+    var syncInventoryService = new SyncInventoryService(productRepository);
 
-var reportGenerator = new ReportGenerator(orderRepository, productRepository);
+    var syncPricingService = new SyncPricingService(
+        productRepository,
+        couponRepository,
+        customerRepository);
 
+    var syncPaymentGateway = new SyncPaymentGateway(
+        jsonFileStore,
+        enableFailures ? new[] { 8 } : Array.Empty<int>(),
+        enableFailures ? new[] { 5 } : Array.Empty<int>());
 
-//// Sync Repositories
-//var syncCustomerRepository = new SyncCustomerRepository(jsonFileStore);
-//var syncProductRepository = new SyncProductRepository(jsonFileStore);
-//var syncCouponRepository = new SyncCouponRepository(jsonFileStore);
+    var syncEmailService = new SyncEmailService(
+        jsonFileStore,
+        enableFailures
+            ? new Dictionary<int, int>
+            {
+                [3] = 2,
+                [17] = int.MaxValue
+            }
+            : new Dictionary<int, int>());
 
-//// Validators
-//var asyncOrderValidator = new OrderValidatorService(
-//    couponRepository,
-//    customerRepository,
-//    productRepository,
-//    orderRepository);
+    var syncOrderProcessor = new SyncOrderProcessor(
+        customerRepository,
+        syncInventoryService,
+        syncPricingService,
+        syncPaymentGateway,
+        orderRepository,
+        syncEmailService,
+        jsonFileStore);
 
-//var syncOrderValidator = new SyncOrderValidator(
-//    syncCouponRepository,
-//    syncCustomerRepository,
-//    syncProductRepository);
+    var fireAndForgetInvestigation =
+    new FireAndForgetInvestigation(orderRepository, emailService);
 
-//// Runner
-//var phase1Runner = new Phase1Runner(
-//    dataSeeder,
-//    incomingOrderRepository,
-//    syncOrderValidator,
-//    asyncOrderValidator,
-//    orderRepository);
+    // Phase 3 Comparison Runner
+    var phase3Runner = new Phase3Runner(
+        dataSeeder,
+        incomingOrderRepository,
+        syncOrderProcessor,
+        orderProcessor,
+        jsonFileStore,
+        fireAndForgetInvestigation,
+        customerService);
 
-//// Run
-//await phase1Runner.RunAsync(CancellationToken.None);
-
-
-var pricingService = new PricingService(
-    productRepository,
-    couponRepository,
-    customerRepository,new [] {7});
-
-var orderPricerService = new OrderPricerService(pricingService); 
-var phase2Runner = new Phase2Runner(
-    incomingOrderRepository,
-    orderPricerService,
-    dataSeeder,raceConditionDemo,
-    orderValidatorService,
-    orderProcessor,
-    productRepository,
-    orderRepository,
-    reportGenerator);
-
-
-await phase2Runner.RunAsync(CancellationToken.None);
-
-
-
+    await phase3Runner.RunAsync(cts.Token);
+}
+catch (OperationCanceledException)
+{
+    Console.WriteLine("Operation cancelled.");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Unexpected error: {ex}");
+}

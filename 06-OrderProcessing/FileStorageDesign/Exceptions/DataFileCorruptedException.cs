@@ -1,4 +1,4 @@
-﻿namespace OrderProcessingSystem.Storage
+﻿namespace FileStorageDesign.Exceptions
 {
     [Serializable]
     internal class DataFileCorruptedException : Exception

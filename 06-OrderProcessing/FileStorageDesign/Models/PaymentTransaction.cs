@@ -8,7 +8,5 @@ public class PaymentTransaction
     public string? TransactionId { get; set; }
     public DateTime CreatedAt { get; set; }
 
-    public PaymentTransaction()
-    {
-    }
+  
 }
