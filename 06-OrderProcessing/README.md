@@ -252,3 +252,69 @@ For example, a UI button click handler may need to be `async void`.
 In this case, `async void` is acceptable because the event framework expects a void-returning handler.
 
 However, exceptions should be handled inside the event handler using `try-catch`.
+
+
+
+
+# Phase 4 — Questions & Answers
+
+## 1. For each of Tasks 10.1–10.4: which tool did you use, and why can't "start, then await one by one" meet the requirement?
+
+- **Task 10.1 — `Task.WhenEach`:** I used `Task.WhenEach` to process orders as soon as each task completes. Starting all tasks and then awaiting them one by one does not process results in completion order. It waits for the first task in the list, even if other tasks have already finished.
+
+- **Task 10.2 — `Task.WhenAll`:** I used `Task.WhenAll` to run the four dashboard loads concurrently and wait until all of them finish. Awaiting tasks one by one would make the loads run sequentially if each task is started only when awaited.
+
+- **Task 10.3 — `Task.WhenAny`:** I used `Task.WhenAny` to get the first shipping carrier that returns a successful quote. Awaiting carriers one by one would wait for slower carriers even when a faster quote is already available.
+
+- **Task 10.4 A — `Parallel.ForEach`:** I used `Parallel.ForEach` to distribute fraud-scoring work across multiple CPU cores. Starting tasks and awaiting them one by one would not provide parallel CPU execution.
+
+- **Task 10.4 B — `SemaphoreSlim` with `Task.WhenAll`:** I used `SemaphoreSlim` to limit concurrent email sends to four. `Task.WhenAll` waits for all email tasks to finish. Awaiting them one by one would send emails sequentially instead of allowing concurrent I/O operations.
+
+## 2. In 10.2, when several loads fail, how do you get every exception? What does a plain await give you?
+
+I used `Task.WhenAll` to wait for all four loads. If multiple tasks fail, I can catch the exception and inspect the returned task's `Exception` property, then use `Flatten().InnerExceptions` to get every exception.
+
+A plain `await` on the `Task.WhenAll` task throws one exception, not all the exceptions. The other exceptions are still available through the task's `Exception` property.
+
+## 3. In 10.3, what happens to the losing carriers if you never cancel them?
+
+The losing carriers continue running even after the fastest carrier returns a quote. Their tasks may still consume resources and perform unnecessary work.
+
+To stop them, I can use a `CancellationTokenSource` and cancel the losing tasks after getting the successful result. This only works if the carriers support and respect cancellation.
+
+## 4. Why does 10.4 A get faster with more CPU cores, while 10.4 B does not depend on the number of cores?
+
+**10.4 A — Fraud Scoring:**
+
+This is CPU-bound work. It performs calculations that need CPU processing. More CPU cores allow multiple parts of the work to run in parallel, which can reduce execution time.
+
+**10.4 B — Email Re-sending:**
+
+This is I/O-bound work. Most of the time is spent waiting for simulated email operations (`Task.Delay`), not performing CPU calculations. Multiple emails can be in progress while waiting, so the main limit is the concurrency limit set by `SemaphoreSlim`, not the number of CPU cores.
+
+## 5. What is the difference between parallel work (10.4 A) and concurrent asynchronous work (10.1)?
+
+- **Parallel work:** Multiple operations execute at the same time on different CPU cores. It is useful for CPU-bound work, such as fraud scoring.
+- **Concurrent asynchronous work:** Multiple operations are in progress at the same time, but they do not necessarily execute simultaneously. While one operation is waiting for I/O, another can make progress. It is useful for operations such as processing orders asynchronously.
+
+In short, parallelism is about using multiple CPU cores, while concurrency is about managing multiple operations that are in progress.
+
+## 6. Show a cancelled run (`--cancel-after`) and explain what happened to the orders, the stock and the payments.
+
+I used the `--cancel-after` argument to test cancellation during order processing.
+
+**Command:**
+
+```bash
+dotnet run -- phase4 --cancel-after 2000
+```
+
+When the cancellation token is triggered, cancellation is passed to the running operations. The program catches `OperationCanceledException` and reports that the operation was cancelled.
+
+The final state depends on when cancellation happens during order processing:
+
+- **Orders:** Orders already saved before cancellation remain saved. Orders that did not finish processing should not be saved as completed.
+- **Stock:** Stock reserved by an order that gets cancelled should be released.
+- **Payments:** Payments already completed before cancellation remain recorded. An operation cancelled before payment should not create a successful payment.
+
+I would verify the actual result by checking `orders.json`, `products.json`, and `payments.json` after the cancelled run.

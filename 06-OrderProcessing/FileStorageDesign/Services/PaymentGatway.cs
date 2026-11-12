@@ -1,5 +1,7 @@
 ﻿
 using FileStorageDesign.Constants;
+using FileStorageDesign.Interfaces;
+using FileStorageDesign.logging;
 using FileStorageDesign.Models;
 using OrderProcessingSystem.Storage;
 
@@ -110,5 +112,15 @@ namespace FileStorageDesign.Services
                 },
                 ct);
         }
+        public async Task<List<PaymentTransaction>> GetAllPaymentsAsync(
+    CancellationToken ct)
+        {
+            await Log.OpenConnectionAsync(nameof(PaymentGateway), ct);
+            await Log.ExecutingAsync(nameof(PaymentGateway), ct);
+
+            return await _jsonFileStore.ReadAsync<PaymentTransaction>(
+                DataFiles.Payments, ct);
+        }
+
     }
 }

@@ -77,5 +77,14 @@ namespace FileStorageDesign.Services
             Log.Success(nameof(EmailService),
                 $"Confirmation email sent for Order #{order.Id}");
         }
+        public async Task<List<EmailRecord>> GetAllEmailsAsync(
+    CancellationToken ct)
+        {
+            await Log.OpenConnectionAsync(nameof(EmailService), ct);
+            await Log.ExecutingAsync(nameof(EmailService), ct);
+
+            return await _jsonFileStore.ReadAsync<EmailRecord>(
+                DataFiles.Emails, ct);
+        }
     }
 }

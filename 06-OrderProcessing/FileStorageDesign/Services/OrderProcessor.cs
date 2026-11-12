@@ -6,6 +6,7 @@ using FileStorageDesign.Models;
 using FileStorageDesign.Repositories;
 using FileStorageDesign.logging;
 using OrderProcessingSystem.Storage;
+using FileStorageDesign.Interfaces;
 
 namespace FileStorageDesign.Services
 {

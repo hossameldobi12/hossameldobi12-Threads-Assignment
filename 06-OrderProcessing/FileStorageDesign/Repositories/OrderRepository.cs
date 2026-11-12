@@ -14,7 +14,7 @@ namespace FileStorageDesign.Repositories
         private readonly HashSet<int> _failSaveForOrderIds;
         public OrderRepository(JsonFileStore jsonFileStore, IEnumerable<int> failSaveForOrderIds)
         {
-         
+
             _jsonFileStore = jsonFileStore;
             _failSaveForOrderIds = new HashSet<int>(failSaveForOrderIds);
         }
@@ -26,7 +26,7 @@ namespace FileStorageDesign.Repositories
             await Log.ExecutingAsync(nameof(OrderRepository), cancellationToken);
 
             var orders = await _jsonFileStore.ReadAsync<Order>(DataFiles.Orders, cancellationToken);
-            if(orders.Any())
+            if (orders.Any())
             {
                 Log.Success(nameof(OrderRepository), $"Retrieved {orders.Count} orders.");
 
@@ -38,7 +38,7 @@ namespace FileStorageDesign.Repositories
             return orders;
 
         }
-     
+
 
         public async Task<Order?> GetOrderByIdAsync(int orderId, CancellationToken cancellationToken)
         {
@@ -55,6 +55,21 @@ namespace FileStorageDesign.Repositories
                 Log.Info(nameof(OrderRepository), $"Order with ID: {orderId} not found.");
             }
             return order;
+        }
+        public async Task<List<Order>> GetOrdersByCustomerIdAsync( int customerId,CancellationToken cancellationToken)
+        {
+            await Log.OpenConnectionAsync(
+                nameof(OrderRepository), cancellationToken);
+
+            await Log.ExecutingAsync(
+                nameof(OrderRepository), cancellationToken);
+
+            var orders = await _jsonFileStore.ReadAsync<Order>(
+                DataFiles.Orders, cancellationToken);
+
+            return orders
+                .Where(o => o.CustomerId == customerId)
+                .ToList();
         }
 
         public async Task<bool> SaveOrderAsync(
@@ -90,7 +105,7 @@ namespace FileStorageDesign.Repositories
                 },
                 cancellationToken);
 
-          
+
 
             await Log.CommitAsync(
                 nameof(OrderRepository), cancellationToken);
@@ -103,12 +118,12 @@ namespace FileStorageDesign.Repositories
         }
 
 
-        public async Task<List<Order>> GetByStatusAsync(OrderStatus orderStatus,CancellationToken cancellationToken)
+        public async Task<List<Order>> GetByStatusAsync(OrderStatus orderStatus, CancellationToken cancellationToken)
         {
             await Log.OpenConnectionAsync(nameof(OrderRepository), cancellationToken);
             await Log.ExecutingAsync(nameof(OrderRepository), cancellationToken);
             var orders = await _jsonFileStore.ReadAsync<Order>(DataFiles.Orders, cancellationToken);
-            var  orderSameStatus = orders.Where(o => o.Status == orderStatus).ToList();
+            var orderSameStatus = orders.Where(o => o.Status == orderStatus).ToList();
             if (orderSameStatus.Any())
             {
                 Log.Success(nameof(OrderRepository), $"Retrieved {orderSameStatus.Count} orders.");
@@ -118,7 +133,7 @@ namespace FileStorageDesign.Repositories
             {
                 Log.Info(nameof(OrderRepository), "No orders found.");
             }
-            return  orderSameStatus;
+            return orderSameStatus;
 
 
         }

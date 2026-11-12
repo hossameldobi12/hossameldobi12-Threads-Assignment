@@ -6,4 +6,5 @@ public interface IEmailService
         Order order,
         Customer customer,
         CancellationToken cancellationToken);
+    public Task<List<EmailRecord>> GetAllEmailsAsync(CancellationToken ct);
 }

@@ -8,7 +8,5 @@ public class Product
     public int StockQuantity { get; set; }
     public decimal WeightKg { get; set; }
 
-    public Product()
-    {
-    }
+  
 }
